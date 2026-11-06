@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EDO 生成与评估器</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --border: #e4e8f1;
+    --text: #1f2433;
+    --muted: #6b7280;
+    --accent: #4f6ef7;
+    --accent-2: #14b8a6;
+    --good: #16a34a;
+    --warn: #d97706;
+    --bad: #dc2626;
+    --just: #16a34a;
+    --tet: #94a3b8;
+    --edo: #f97316;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 18px 48px;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  .layout { display: grid; grid-template-columns: 1.7fr 1fr; gap: 22px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+  header h1 { font-size: 26px; margin: 0 0 6px; color: var(--text); }
+  header p { color: var(--muted); margin: 0; font-size: 13.5px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 18px rgba(31,36,51,.06);
+  }
+  .section-title { font-size: 15.5px; font-weight: 700; margin: 0 0 14px; }
+
+  /* 控制区 */
+  .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .klabel { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .kbox {
+    width: 74px; font-size: 20px; font-weight: 700; text-align: center;
+    padding: 7px 6px; border: 2px solid var(--accent); border-radius: 10px;
+    color: var(--text); background: #fff; outline: none; font-variant-numeric: tabular-nums;
+  }
+  .kbox:focus { box-shadow: 0 0 0 3px rgba(79,110,247,.18); }
+  .edosuffix { font-size: 18px; font-weight: 700; color: var(--muted); }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; min-width: 160px; height: 8px; border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--accent); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); cursor: pointer;
+  }
+
+  /* 表格 */
+  .table-scroll { width: 100%; overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  th, td { padding: 7px 5px; text-align: center; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  td.name { text-align: left; font-weight: 600; white-space: nowrap; }
+  .mono { font-variant-numeric: tabular-nums; }
+  .frac-cell { font-weight: 700; }
+  .frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; line-height: 1.05; font-size: 11px; }
+  .frac .fn { border-bottom: 1px solid currentColor; padding: 0 3px; }
+  .frac .fd { padding: 0 3px; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+    background: rgba(79,110,247,.12); color: var(--accent);
+  }
+  .mini {
+    border: 1px solid var(--accent); background: rgba(79,110,247,.07); color: var(--accent);
+    border-radius: 8px; padding: 5px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .mini:hover { background: rgba(79,110,247,.18); }
+  .mini:active { transform: scale(.96); }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .zeta-box {
+    margin-top: 14px; padding: 12px 14px; font-size: 13px; line-height: 1.7;
+    background: rgba(79,110,247,.06); border: 1px solid rgba(79,110,247,.18);
+    border-radius: 12px; color: var(--text);
+  }
+  .zeta-box .big { font-size: 19px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .zeta-box .peak { color: var(--good); font-weight: 700; }
+  .zeta-box .formula { color: var(--muted); font-size: 11.5px; }
+
+  /* 按钮 */
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    color: #fff; border: none; border-radius: 12px;
+    padding: 12px 22px; font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: transform .08s ease, filter .15s ease;
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.ghost { background: #fff; color: var(--accent); border: 2px solid var(--accent); box-shadow: none; }
+  .btn.ghost:hover { background: rgba(79,110,247,.08); }
+  .meta { color: var(--muted); font-size: 12.5px; margin-left: 12px; }
+  .row-flex { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .play-block + .play-block { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 16px; }
+
+  /* 图表 */
+  .chart-wrap { width: 100%; overflow-x: auto; }
+  canvas { width: 100%; height: auto; display: block; }
+  .chart-cap { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.6; }
+  .melody-text { color: var(--muted); font-size: 12.5px; line-height: 1.7; margin-top: 4px; }
+  .melody-text b { color: var(--text); font-weight: 600; }
+
+  @media (max-width: 1180px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .btn.playing { background: #ef4444; }
+  .mini.playing { background: rgba(220,38,38,.12); border-color: #dc2626; color: #dc2626; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="layout">
+
+    <!-- 左半边：标题 / k 设置 / 音程评估表 -->
+    <div class="col">
+      <header>
+        <h1>EDO 微分音生成与评估器</h1>
+        <p>调节 EDO 划分数量，查看其音程对纯律 / 十二平均律的逼近程度，并试听对应律制下的音阶与旋律。</p>
+      </header>
+
+      <div class="card">
+        <div class="controls">
+          <span class="klabel">k =</span>
+          <input type="number" id="edoInput" class="kbox" min="5" max="96" step="1" value="12">
+          <span class="edosuffix">-EDO</span>
+          <input type="range" id="edoSlider" min="5" max="96" step="1" value="12">
+        </div>
+        <p class="foot">每八度等分数量，范围 5 – 96；可直接在输入框键入 k，滑条实时同步。</p>
+      </div>
+
+      <div class="card">
+        <p class="section-title">音程评估表</p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:left">音程</th>
+                <th>比例</th>
+                <th>纯律¢</th>
+                <th>12TET¢</th>
+                <th>步数</th>
+                <th>EDO¢</th>
+                <th>误差·纯律</th>
+                <th>相对误差</th>
+                <th>纯律试听</th>
+                <th>EDO试听</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <p class="foot">误差 = EDO 音程 − 参考音程（音分）；数值越小（绿）越接近。相对误差 = [k·log₂(比例)] − k·log₂(比例)，其中方括号为最接近的整数，以一步的百分比表示（范围 −50%~50%，越接近 0 逼近越好）。试听为双音：根音 C4 + 上行一个本行音程。</p>
+        <div class="zeta-box" id="zetaBox"></div>
+      </div>
+    </div>
+
+    <!-- 右半边：对比图 / 试听 -->
+    <div class="col">
+      <div class="card">
+        <p class="section-title">当前 EDO 误差柱状图</p>
+        <div class="chart-wrap">
+          <canvas id="chart" width="860" height="400"></canvas>
+        </div>
+        <p class="chart-cap">
+          横轴：大调音阶各音（唱名 Re–Si，已略去误差恒为 0 的根音 Do 与高八度 Do）。纵轴：误差（音分），范围 −100 ~ 100，0 为基准；正值=偏高，负值=偏低。<br>
+          每根柱表示：<span style="color:var(--just)">■</span> 相对纯律的误差。
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="section-title">试听</p>
+        <div class="play-block row-flex">
+          <button class="btn" id="playScaleBtn">▶ 播放最优 C 大调音阶</button>
+          <span class="meta" id="scaleMeta"></span>
+        </div>
+        <div class="play-block row-flex">
+          <button class="btn" id="playMelodyBtn">▶ 播放旋律（90 BPM）</button>
+          <button class="btn ghost" id="exportMelodyBtn">⤓ 导出旋律 WAV</button>
+          <span class="meta" id="melodyMeta"></span>
+        </div>
+        <p class="melody-text">
+          <b>旋律</b>（A3 = 440 Hz，未标注时值默认一拍）<br>
+          <b>说明</b>：音阶与旋律均以 A4=440Hz 为基准，并在当前 k-EDO 下取最接近标准音位的步进播放（钢琴音色）。
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ===== 基准频率 =====
+  const A4 = 440;                      // 统一基准：A4 = 440 Hz
+  const C4 = A4 * Math.pow(2, -9/12);  // 标准 A4=440 下的 C4 = 261.63 Hz
+
+  // ===== 音程评估数据 =====
+  const intervals = [
+    { name: '小二度', ratio: 16/15, frac: '16/15', tet12: 100 },
+    { name: '大二度', ratio: 9/8,  frac: '9/8',  tet12: 200 },
+    { name: '小三度', ratio: 6/5,  frac: '6/5',  tet12: 300 },
+    { name: '大三度', ratio: 5/4,  frac: '5/4',  tet12: 400 },
+    { name: '纯四度', ratio: 4/3,  frac: '4/3',  tet12: 500 },
+    { name: '纯五度', ratio: 3/2,  frac: '3/2',  tet12: 700 },
+    { name: '小六度', ratio: 8/5,  frac: '8/5',  tet12: 800 },
+    { name: '大六度', ratio: 5/3,  frac: '5/3',  tet12: 900 },
+  ].map(i => ({ ...i, just: 1200 * Math.log2(i.ratio) }));
+
+  // 把 "a/b" 渲染成上下结构的分数
+  function fracHTML(frac){
+    const [n, d] = frac.split('/');
+    return `<span class="frac"><span class="fn">${n}</span><span class="fd">${d}</span></span>`;
+  }
+
+  // C 大调（从 C 出发的纯律比例）：C D E F G A B C
+  const scaleRatios = [1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8, 2];
+
+  // 大调音阶图表数据（相对根音 C 的音分）
+  const majorNames = ['Do','Re','Mi','Fa','So','La','Si','Do'];
+  const majorJust  = [0, 1200*Math.log2(9/8), 1200*Math.log2(5/4), 1200*Math.log2(4/3),
+                      1200*Math.log2(3/2), 1200*Math.log2(5/3), 1200*Math.log2(15/8), 1200];
+  // 柱状图剔除误差恒为 0 的根音(Do)与高八度(Do)，仅保留 Re–Si
+  const chartIdx   = [1,2,3,4,5,6];
+  const chartNames = ['Re','Mi','Fa','So','La','Si'];
+
+  // 旋律（A3=440；默认一拍，括号内为两拍）
+  const bpm = 90; // 旋律播放速度（BPM）
+  const beatSec = 60 / bpm; // 1 秒/拍
+  const melody = [
+    { notes:['C4'],        beats:1 },
+    { notes:['C4'],        beats:1 },
+    { notes:['E4','G4'],   beats:1 },
+    { notes:['E4','G4'],   beats:1 },
+    { notes:['F4','A4'],   beats:1 },
+    { notes:['F4','A4'],   beats:1 },
+    { notes:['D4','G4'],   beats:2 },
+    { notes:['A3','F4'],   beats:1 },
+    { notes:['A3','F4'],   beats:1 },
+    { notes:['G3','E4'],   beats:1 },
+    { notes:['G3','E4'],   beats:1 },
+    { notes:['G3','D4'],   beats:1 },
+    { notes:['G3','D4'],   beats:1 },
+    { notes:['C4'],        beats:2 },
+  ];
+
+  // 音名 -> 相对 A4 的半音数（12 平均律）
+  const SEMI = { C:-9,'C#':-8,D:-7,'D#':-6,E:-5,F:-4,'F#':-3,G:-2,'G#':-1,A:0,'A#':1,B:2 };
+  function noteSemitones(note){
+    const m = note.match(/^([A-G]#?)(\d)$/);
+    return SEMI[m[1]] + (parseInt(m[2],10) - 4) * 12;
+  }
+
+  // ===== DOM =====
+  const edoInput  = document.getElementById('edoInput');
+  const edoSlider = document.getElementById('edoSlider');
+  const tbody     = document.getElementById('tableBody');
+  const chart     = document.getElementById('chart');
+  const zetaBox   = document.getElementById('zetaBox');
+
+  function errColor(e){
+    const a = Math.abs(e);
+    if (a < 10)  return 'var(--good)';
+    if (a < 20) return 'var(--warn)';
+    return 'var(--bad)';
+  }
+  const fmt = (n,d=2) => (n>=0?'+':'') + n.toFixed(d);
+  function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  // 稳健求“最接近”的 EDO 步数：先四舍五入，再在对数空间与相邻两步精确比较，
+  // 选真正最近的一步。可消除浮点表示在边界处的错位，对任意 k 均正确。
+  function nearestStep(ratio, k){
+    const target = k * Math.log2(ratio);
+    let n = Math.round(target);
+    const err = s => Math.abs(s / k - Math.log2(ratio)); // 对数空间距离（= 音分距离）
+    if (n > 0 && err(n - 1) < err(n)) n--;
+    else if (err(n + 1) < err(n)) n++;
+    return n;
+  }
+
+  function render(){
+    const k = +edoInput.value;
+    let html = '';
+    intervals.forEach((iv, idx) => {
+      const step   = nearestStep(iv.ratio, k);
+      const target = k * Math.log2(iv.ratio);          // 理想步数 n·log2(a/b)
+      const edoCents = step * 1200 / k;
+      const rel   = step - target;                      // 相对误差 [x]-x，范围 [-0.5,0.5]
+      const eJust = edoCents - iv.just;
+      html += `<tr>
+        <td class="name">${iv.name}</td>
+        <td class="mono frac-cell">${fracHTML(iv.frac)}</td>
+        <td class="mono">${iv.just.toFixed(1)}</td>
+        <td class="mono">${iv.tet12.toFixed(0)}</td>
+        <td><span class="pill">${step}</span></td>
+        <td class="mono">${edoCents.toFixed(1)}</td>
+        <td class="mono" style="color:${errColor(eJust)}">${fmt(eJust)}</td>
+        <td class="mono">${(rel*100>=0?'+':'')}${(rel*100).toFixed(1)}%</td>
+        <td><button class="mini" data-idx="${idx}" data-type="just">▶ 纯律</button></td>
+        <td><button class="mini" data-idx="${idx}" data-type="edo">▶ EDO</button></td>
+      </tr>`;
+    });
+    tbody.innerHTML = html;
+    drawChart(k);
+    scheduleZeta(k);
+  }
+
+  // ===== Zeta 调律 =====
+  // |ζ(1/2 + (2πk/ln2) i)|² 越大表示该 k-EDO 越优。
+  // 通过 Dirichlet η 函数（交错级数）计算：η(s)=Σ(-1)^{n-1} n^{-s}，ζ(s)=η/(1-2^{1-s})。
+  // 交错级数余项错误 ≤ 1/√(M+1)，与 t 无关；取 M=2e5 即可保证全量程精度（已用大 M 校验）。
+  function zetaAbsSq(k){
+    const t = 2 * Math.PI * k / Math.LN2;
+    const M = 200000;
+    let er = 0, ei = 0;
+    for (let m = 1; m <= M; m++){
+      const lnm = Math.log(m);
+      const re = Math.cos(t * lnm) / Math.sqrt(m);
+      const im = -Math.sin(t * lnm) / Math.sqrt(m);
+      if (m & 1){ er += re; ei += im; } else { er -= re; ei -= im; }
+    }
+    const mag = Math.SQRT2, ca = Math.cos(t * Math.LN2), sa = Math.sin(t * Math.LN2);
+    const denRe = 1 - mag * ca, denIm = mag * sa, dl2 = denRe * denRe + denIm * denIm;
+    const zr = (er * denRe + ei * denIm) / dl2, zi = (ei * denRe - er * denIm) / dl2;
+    return zr * zr + zi * zi;
+  }
+  let zetaTimer = null;
+  function scheduleZeta(k){
+    if (zetaTimer) clearTimeout(zetaTimer);
+    zetaTimer = setTimeout(() => updateZeta(k), 90);
+  }
+  function updateZeta(k){
+    const v = zetaAbsSq(k);
+    let peak = '';
+    if (k > 5 && k < 96){
+      const a = zetaAbsSq(k - 1), b = zetaAbsSq(k + 1);
+      if (v >= a && v >= b) peak = ' <span class="peak">（Zeta 峰 · 优质 EDO）</span>';
+    }
+    zetaBox.innerHTML =
+      `Zeta 调律：<span class="big">${v.toFixed(2)}</span>${peak}<br>` +
+      `<span class="formula">|ζ(½ + (2πk/ln2)·i)|²，k = ${k}，数值越大表示该平均律对全部有理音程逼近越好（参考 tun.wiki Zeta 调律）。</span>`;
+  }
+
+  // ===== 误差柱状图 =====
+  function edoMajor(k){
+    return majorJust.map(c => nearestStep(Math.pow(2, c/1200), k) * 1200 / k);
+  }
+  function drawBar(ctx, cx, val, w, color){
+    const y0 = Y(0);
+    const v  = Math.max(-100, Math.min(100, val));
+    const yv = Y(v);
+    ctx.fillStyle = color;
+    const x0 = cx - w/2;
+    if (v >= 0) ctx.fillRect(x0, yv, w, y0 - yv);
+    else        ctx.fillRect(x0, y0, w, yv - y0);
+  }
+  let Y; // 纵轴映射，drawChart 内定义
+  function drawChart(k){
+    const ctx = chart.getContext('2d');
+    const W = chart.width, H = chart.height;
+    ctx.clearRect(0,0,W,H);
+    const padL=46, padR=16, padT=40, padB=46;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const yMin=-100, yMax=100;
+    const X = j => padL + plotW * (j + 0.5) / chartNames.length;
+    Y = c => padT + plotH * (1 - (c - yMin) / (yMax - yMin));
+
+    // 网格 + Y 标签
+    ctx.font = '12px sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle';
+    [-100,-50,0,50,100].forEach(c=>{
+      const yy = Y(c);
+      ctx.strokeStyle = c===0 ? '#cbd2e0' : '#eef1f7';
+      ctx.lineWidth   = c===0 ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+      ctx.fillStyle = '#9aa1b1'; ctx.fillText(c, padL-8, yy);
+    });
+    // 坐标轴
+    ctx.strokeStyle='#cbd2e0'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+plotH); ctx.lineTo(W-padR,padT+plotH); ctx.stroke();
+    // X 标签
+    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillStyle='#6b7280'; ctx.font='12px sans-serif';
+    chartNames.forEach((n,j)=> ctx.fillText(n, X(j), padT+plotH+8));
+
+    // 柱子（仅保留相对纯律的误差）
+    const groupW = plotW / chartNames.length;
+    const bw = Math.min(36, groupW * 0.5);
+    const edo = edoMajor(k);
+    chartIdx.forEach((idx,j)=>{
+      drawBar(ctx, X(j), edo[idx] - majorJust[idx], bw, getCss('--just'));
+    });
+
+    // 图例
+    ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font='12px sans-serif';
+    const legend=[['误差·纯律',getCss('--just')]];
+    let lx=padL+4, ly=padT-20;
+    legend.forEach(([t,col])=>{
+      ctx.fillStyle=col; ctx.fillRect(lx,ly-5,12,10);
+      ctx.fillStyle='#4b5563'; ctx.fillText(t, lx+18, ly);
+      lx += ctx.measureText(t).width + 40;
+    });
+  }
+
+  // ===== 音频 =====
+  let audioCtx = null;
+  let activeBtn = null;     // 当前正在播放的按钮
+  let activeVoices = [];    // 当前所有发声的振荡器
+  let stopTimer = null;     // 自然结束后的自动复位计时器
+  function getCtx(){
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  // 钢琴音色：基频 + 若干谐波，高次谐波衰减更快，整体指数衰减（近似钢琴拨弦）
+  function playNote(ctx, freq, start, dur, pan=0){
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    panner.connect(ctx.destination);
+    const partials = [
+      { n:1, a:1.00, d:1.00 },
+      { n:2, a:0.55, d:0.70 },
+      { n:3, a:0.38, d:0.55 },
+      { n:4, a:0.22, d:0.42 },
+      { n:5, a:0.14, d:0.32 },
+      { n:6, a:0.09, d:0.25 },
+    ];
+    const peak = 0.16;
+    // 延音：保持峰值至 (dur - 0.3拍)，随后 0.3拍 内指数衰减（2拍音的最后1拍同理）
+    const holdTime = Math.max(0.01, dur - 0.3 * beatSec);
+    const decayBase = 0.3 * beatSec;
+    partials.forEach(p=>{
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq * p.n;
+      const decayEnd = start + holdTime + decayBase * p.d;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(peak * p.a, start + 0.004);
+      g.gain.setValueAtTime(peak * p.a, start + holdTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, decayEnd);
+      osc.connect(g).connect(panner);
+      osc.start(start);
+      osc.stop(decayEnd + 0.03);
+      activeVoices.push(osc);
+    });
+  }
+
+  // 停止 / 切换播放：正在播放时再次点击同一按钮即停止
+  function stopPlayback(){
+    if (stopTimer){ clearTimeout(stopTimer); stopTimer = null; }
+    activeVoices.forEach(o => { try { o.stop(); } catch(e){} try { o.disconnect(); } catch(e){} });
+    activeVoices = [];
+    if (activeBtn){
+      activeBtn.disabled = false;
+      activeBtn.textContent = activeBtn.dataset.label || activeBtn.textContent;
+      activeBtn.classList.remove('playing');
+      activeBtn = null;
+    }
+  }
+  function startPlayback(btn, playFn){
+    if (activeBtn === btn){ stopPlayback(); return; }
+    stopPlayback();
+    activeBtn = btn;
+    btn.dataset.label = btn.textContent;
+    btn.textContent = '■ 停止';
+    btn.classList.add('playing');
+    playFn();
+  }
+
+  // 评估表：双音试听（根音 C4 + 上行音程），普通点击即播放，不接入停止键
+  tbody.addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    const idx = +btn.dataset.idx, type = btn.dataset.type;
+    const iv = intervals[idx], k = +edoInput.value;
+    const ctx = getCtx(); const t = ctx.currentTime + 0.04; const D = 0.5;
+    if (type === 'just'){
+      playNote(ctx, C4, t, D, -0.5);
+      playNote(ctx, C4 * iv.ratio, t, D, 0.5);
+    } else {
+      const step = nearestStep(iv.ratio, k);
+      playNote(ctx, C4, t, D, -0.5);
+      playNote(ctx, C4 * Math.pow(2, step/k), t, D, 0.5);
+    }
+  });
+
+  // 最优 C 大调音阶（A4=440）
+  const playScaleBtn = document.getElementById('playScaleBtn');
+  const scaleMeta = document.getElementById('scaleMeta');
+  playScaleBtn.addEventListener('click', ()=>{
+    startPlayback(playScaleBtn, ()=>{
+      const k = +edoInput.value;
+      const ctx = getCtx();
+      const noteDur = 0.5;
+      const t0 = ctx.currentTime + 0.06;
+      const steps = scaleRatios.map(r => nearestStep(r, k));
+      const freqs = steps.map(s => C4 * Math.pow(2, s/k));
+      freqs.forEach((f,i)=> playNote(ctx, f, t0+i*noteDur, noteDur));
+      scaleMeta.textContent = `EDO 步数：${steps.join(' · ')}　|　频率(Hz)：${freqs.map(f=>f.toFixed(1)).join('  ')}`;
+      stopTimer = setTimeout(stopPlayback, noteDur*freqs.length*1000 + 50);
+    });
+  });
+
+  // 旋律（A4=440，当前 EDO）
+  const playMelodyBtn = document.getElementById('playMelodyBtn');
+  const melodyMeta = document.getElementById('melodyMeta');
+  playMelodyBtn.addEventListener('click', ()=>{
+    startPlayback(playMelodyBtn, ()=>{
+      const k = +edoInput.value;
+      const ctx = getCtx();
+      let t = ctx.currentTime + 0.06;
+      const totalBeats = melody.reduce((s,e)=>s+e.beats,0);
+      melody.forEach(ev=>{
+        const dur = ev.beats * beatSec;
+        ev.notes.forEach((note, ni)=>{
+          const cents = noteSemitones(note) * 100;
+          const step  = Math.round(cents * k / 1200);
+          const freq  = A4 * Math.pow(2, step/k);
+          const pan = ev.notes.length > 1 ? (ni % 2 === 0 ? -0.5 : 0.5) : 0;
+          playNote(ctx, freq, t, dur*0.92, pan);
+        });
+        t += dur;
+      });
+      melodyMeta.textContent = `共 ${melody.reduce((s,e)=>s+e.notes.length,0)} 个音符，时长 ≈ ${totalBeats*beatSec.toFixed(2)} 秒（A4=440Hz）`;
+      stopTimer = setTimeout(stopPlayback, totalBeats*beatSec*1000 + 300);
+    });
+  });
+
+  // 导出旋律为 WAV（当前 K-EDO 音律，离线渲染后下载）
+  const exportMelodyBtn = document.getElementById('exportMelodyBtn');
+  const exportLabel = exportMelodyBtn.textContent;
+  exportMelodyBtn.addEventListener('click', async () => {
+    if (exportMelodyBtn.disabled) return;
+    exportMelodyBtn.disabled = true;
+    exportMelodyBtn.textContent = '⏳ 渲染中…';
+    try {
+      await exportMelodyWav(+edoInput.value);
+      exportMelodyBtn.textContent = '✓ 已导出';
+    } catch (e) {
+      console.error(e);
+      exportMelodyBtn.textContent = '✗ 出错';
+    }
+    setTimeout(() => { exportMelodyBtn.disabled = false; exportMelodyBtn.textContent = exportLabel; }, 1200);
+  });
+
+  // 与 playNote 相同的钢琴音色，但写入离线上下文（不接入 activeVoices）
+  function offlinePlayNote(ctx, freq, start, dur, pan = 0) {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    panner.connect(ctx.destination);
+    const partials = [
+      { n:1, a:1.00, d:1.00 }, { n:2, a:0.55, d:0.70 }, { n:3, a:0.38, d:0.55 },
+      { n:4, a:0.22, d:0.42 }, { n:5, a:0.14, d:0.32 }, { n:6, a:0.09, d:0.25 },
+    ];
+    const peak = 0.16;
+    const holdTime = Math.max(0.01, dur - 0.3 * beatSec);
+    const decayBase = 0.3 * beatSec;
+    partials.forEach(p => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq * p.n;
+      const decayEnd = start + holdTime + decayBase * p.d;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(peak * p.a, start + 0.004);
+      g.gain.setValueAtTime(peak * p.a, start + holdTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, decayEnd);
+      osc.connect(g).connect(panner);
+      osc.start(start);
+      osc.stop(decayEnd + 0.03);
+    });
+  }
+
+  async function exportMelodyWav(k) {
+    const totalBeats = melody.reduce((s, e) => s + e.beats, 0);
+    const totalSec = totalBeats * beatSec + 0.5;            // 末尾留 0.5s 余响
+    const sampleRate = 44100;
+    const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const offline = new OfflineCtx(2, Math.ceil(totalSec * sampleRate), sampleRate);
+    let t = 0.06;
+    melody.forEach(ev => {
+      const dur = ev.beats * beatSec;
+      ev.notes.forEach((note, ni) => {
+        const cents = noteSemitones(note) * 100;
+        const step  = Math.round(cents * k / 1200);
+        const freq  = A4 * Math.pow(2, step / k);
+        const pan = ev.notes.length > 1 ? (ni % 2 === 0 ? -0.5 : 0.5) : 0;
+        offlinePlayNote(offline, freq, t, dur * 0.92, pan);
+      });
+      t += dur;
+    });
+    const rendered = await offline.startRendering();
+    downloadBlob(encodeWav(rendered), `melody_k${k}.wav`);
+  }
+
+  // AudioBuffer -> 16-bit PCM WAV Blob
+  function encodeWav(audioBuffer) {
+    const numCh = audioBuffer.numberOfChannels;
+    const sr = audioBuffer.sampleRate;
+    const len = audioBuffer.length;
+    const blockAlign = numCh * 2;
+    const dataSize = len * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    let p = 0;
+    const writeStr = s => { for (let i = 0; i < s.length; i++) view.setUint8(p++, s.charCodeAt(i)); };
+    writeStr('RIFF');
+    view.setUint32(p, 36 + dataSize, true); p += 4;
+    writeStr('WAVE');
+    writeStr('fmt ');
+    view.setUint32(p, 16, true); p += 4;
+    view.setUint16(p, 1, true); p += 2;            // PCM
+    view.setUint16(p, numCh, true); p += 2;
+    view.setUint32(p, sr, true); p += 4;
+    view.setUint32(p, sr * blockAlign, true); p += 4;
+    view.setUint16(p, blockAlign, true); p += 2;
+    view.setUint16(p, 16, true); p += 2;
+    writeStr('data');
+    view.setUint32(p, dataSize, true); p += 4;
+    const chans = [];
+    for (let c = 0; c < numCh; c++) chans.push(audioBuffer.getChannelData(c));
+    for (let i = 0; i < len; i++) {
+      for (let c = 0; c < numCh; c++) {
+        const s = Math.max(-1, Math.min(1, chans[c][i]));
+        view.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7FFF, true); p += 2;
+      }
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ===== k 联动 =====
+  function setK(v){
+    v = Math.round(v);
+    if (isNaN(v)) v = 12;
+    if (v < 5)  v = 5;
+    if (v > 96) v = 96;
+    edoInput.value = v;
+    edoSlider.value = v;
+    render();
+  }
+  edoSlider.addEventListener('input', ()=> setK(+edoSlider.value));
+  // 输入框仅在“完成输入”（回车或移开焦点）后再校验并修正，
+  // 避免键入过程中被即时钳制（例如输入 12 时，先键入的 1 会被立刻改成下限 5）
+  edoInput.addEventListener('keydown', e => { if (e.key === 'Enter') edoInput.blur(); });
+  edoInput.addEventListener('blur',    ()=> setK(+edoInput.value));
+
+  render();
+</script>
+</body>
+</html>
